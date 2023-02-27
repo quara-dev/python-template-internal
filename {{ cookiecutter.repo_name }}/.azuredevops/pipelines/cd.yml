@@ -1,0 +1,157 @@
+pool:
+  vmImage: "ubuntu-latest"
+
+trigger:
+  tags:
+    include:
+      - "*"
+
+# Template parameters
+# See parameters data types: https://docs.microsoft.com/en-us/azure/devops/pipelines/process/templates?view=azure-devops#parameter-data-types
+parameters:
+  - name: registryConnection
+    displayName: Name of the service connection to the container registry.
+    type: string
+    default: {{ cookiecutter.container_registry }}
+  - name: registryUrl
+    displayName: URL of the container registry.
+    type: string
+    default: {{ cookiecutter.container_registry_url }}
+  - name: artifactFeed
+    displayName: Name of the artifact feed to publish packages to
+    type: string
+    default: {{ cookiecutter.artifact_feed }}
+  - name: imageName
+    displayName: Name of the docker image pushed to container registry.
+    type: string
+    default: {{ cookiecutter.project_name }}
+
+stages:
+  - stage: Package
+    jobs:
+      - job: Publish_To_Artifact_Feed
+        steps:
+          - checkout: self
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: 3.9
+
+          - task: DownloadSecureFile@1
+            name: pipConfig
+            displayName: Download pip config
+            inputs:
+              secureFile: "pip.conf"
+
+          - script: |
+              mkdir -p $HOME/.config/pip
+              cp $(pipConfig.secureFilePath) $HOME/.config/pip/pip.conf
+            displayName: Copy pip config into home directory
+
+          - script: |
+              python -m pip install --user invoke twine
+              python scripts/install.py
+            displayName: Install dependencies with docs extras
+
+          - script: |
+              python -m invoke build
+            displayName: Build package
+
+          - task: TwineAuthenticate@0
+            inputs:
+              artifactFeeds: "{%raw%}${{ parameters.artifactFeed }}{%endraw%}"
+
+          - script: |
+              echo -e "Publishing on feed $(feed.name) using configuration file $(PYPIRC_PATH)"
+              twine upload -r $(feed.name) --config-file $(PYPIRC_PATH) dist/*
+            displayName: Publish software
+
+  - stage: Documentation
+    jobs:
+      - job: Publish_To_Static_Web_App
+        steps:
+          - checkout: self
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: 3.9
+
+          - task: DownloadSecureFile@1
+            name: pipConfig
+            displayName: Download pip config
+            inputs:
+              secureFile: "pip.conf"
+
+          - script: |
+              mkdir -p $HOME/.config/pip
+              cp $(pipConfig.secureFilePath) $HOME/.config/pip/pip.conf
+            displayName: Copy pip config into home directory
+
+          - script: |
+              python -m pip install --user invoke
+              python scripts/install.py --docs
+            displayName: Install dependencies with docs extras
+
+          - script: |
+              python -m invoke build --docs
+              cd dist/
+              zip -r documentation.zip documentation
+            displayName: Build package
+
+          # Deploy Azure Static Web App v0
+          - task: AzureStaticWebApp@0
+            inputs:
+              azure_static_web_apps_api_token: $(AZURE_STATIC_WEB_APPS_API_TOKEN)
+              output_location: dist/documentation
+              skip_app_build: true
+              is_static_export: true
+              verbose: true
+            displayName: Publish documentation to Azure Static Web App
+
+  - stage: Docker
+    jobs:
+      - job: Publish_To_Registry
+        steps:
+          - checkout: self
+
+          - task: DownloadSecureFile@1
+            name: pipConfig
+            displayName: Download pip config
+            inputs:
+              secureFile: "pip.conf"
+
+          - script: |
+              mkdir -p $HOME/.config/pip
+              cp $(pipConfig.secureFilePath) $HOME/.config/pip/pip.conf
+            displayName: Copy pip config into home directory
+
+          # Log to Azure Container Registry
+          - task: Docker@2
+            inputs:
+              command: login
+              containerRegistry: {%raw%}${{ parameters.registryConnection }}{%endraw%}
+            displayName: Login to ACR
+
+          - task: Docker@2
+            inputs:
+              command: run
+              arguments: "--rm --privileged multiarch/qemu-user-static --reset -p yes"
+            displayName: "Register QEMU user static"
+
+          - script: |
+              docker buildx create --use --name multiarch --driver docker-container
+              docker buildx inspect --bootstrap
+            displayName: Create a buildx context
+
+          # Build the image
+          - script: |
+              docker buildx build \
+                --secret id=pip-config,src=$(pipConfig.secureFilePath) \
+                {%raw%}-t ${{ parameters.registryUrl }}/${{ parameters.imageName }}:$(Build.SourceBranchName) \{%endraw%}
+                {%raw%}-t ${{ parameters.registryUrl }}/${{ parameters.imageName }}:latest \{%endraw%}
+                -f Dockerfile \
+                --provenance=false \
+                --platform='linux/amd64' \
+                --push \
+                .
+            displayName: Build and push docker image

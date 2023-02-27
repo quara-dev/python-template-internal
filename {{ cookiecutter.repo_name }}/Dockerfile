@@ -1,7 +1,7 @@
 ARG BUILD_IMAGE=python:3.10
 ARG BASE_IMAGE=python:3.10-slim
 
-FROM $BUILD_IMAGE as build
+FROM $BUILD_IMAGE AS build
 
 # Create a virtual environment in which package will be installed
 RUN python3 -m pip install -U pip setuptools wheel \

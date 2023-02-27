@@ -1,6 +1,6 @@
-# Template Python OSS
+# Template Python
 
-> A cookiecutter template for open source Python projects hosted on Github.
+> A cookiecutter template for Azure Devops Python projects
 
 # Quick Start
 
@@ -15,49 +15,38 @@ python3 -m pip install --user cookiecutter
 2. Generate new project in an interactive manner:
 
 ```console
-cookiecutter gh:quara-dev/python-template-oss
+cookiecutter gh:quara-dev/python-template-internal
 ```
 
 > When running the command, you will be prompted for option values. When no value is provided, default value (displayed between `[]`) is used.
 
-# GitHub Project configuration
+# Azure Devops Project configuration
 
 Before pushing the first commit to remote repository, some pre-requisites must be met. 
 
-## Github Actions Configuration
+## Azure Devops Secrets
 
-1. Create new SSH keypair:
-
-```console
-ssh-keygen -t ed25519 -f id_ed25519 -N "" -q -C ""
-```
-
-2. Copy public key to add new Deploy Key to Github project:
+1. Create new pip config according to your needs. For example:
 
 ```console
-cat id_ed25519.pub
+[global]
+index-url=https://pkgs.dev.azure.com/QUARA/_packaging/quara-project/pypi/simple/
 ```
 
-> Deploy key must be named `COMMIT_KEY`
+2. Upload pip config as a secret named `pip.conf`
 
-3. Copy private key to add new Action Secret to Github project:
+## Sonarqube configuration
 
-```console
-cat id_ed25519
-```
+1. Import project from Azure Devops into Sonarqube.
 
-> Secret must be named `COMMIT_KEY`
+2. Obtain project token from Sonarcloud.
 
-4. Grant "Read and Write" workflow permission in `Action>General` section.
+3. Update project key in `sonar-project.properties` if required.
 
-5. Configure Github Pages to be deployed from Github action.
+4. Update service connection name in `.azuredevops/pipelines/ci.yml`  is required.
 
-## Sonarcloud configuration
+## Static Web App Deployment
 
-1. Import project from Github into Sonarcloud
+Documentation can be built and deployed as an azure static webapp.
 
-2. Obtain project token from Sonarcloud
-
-2. Copy token to add new Action Secret to Github project
-
-> Secret must be named `SONAR_TOKEN`
+Update the variable holding the API token in `.azuredevops/pipelines/cd.yml` to enable app publish.

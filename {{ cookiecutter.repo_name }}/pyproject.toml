@@ -10,7 +10,6 @@ authors = [
 description = "{{ cookiecutter.project_short_description }}"
 readme = "README.md"
 requires-python = "{{ cookiecutter.requires_python }}"
-license = { text = "{{ cookiecutter.license }}" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",

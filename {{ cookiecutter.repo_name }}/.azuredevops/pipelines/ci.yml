@@ -1,0 +1,177 @@
+---
+pool:
+  vmImage: "ubuntu-latest"
+
+# Also trigger using Branch Policies
+trigger:
+  - next
+
+parameters:
+  - name: sonarConnection
+    displayName: Name of sonarqube service connnection.
+    default: Sonarqube
+  - name: registryConnection
+    displayName: Name of the service connection to the container registry.
+    type: string
+    default: {{ cookiecutter.container_registry }}
+  - name: registryUrl
+    displayName: URL of the container registry.
+    type: string
+    default: {{ cookiecutter.container_registry_url }}
+  - name: imageName
+    displayName: Name of the docker image pushed to container registry.
+    type: string
+    default: {{ cookiecutter.project_name }}
+
+stages:
+  - stage: CI
+    jobs:
+      - job: Validation
+        steps:
+          - checkout: self
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: 3.9
+
+          - task: DownloadSecureFile@1
+            name: pipConfig
+            displayName: Download pip config
+            inputs:
+              secureFile: "pip.conf"
+
+          - script: |
+              mkdir -p $HOME/.config/pip
+              cp $(pipConfig.secureFilePath) $HOME/.config/pip/pip.conf
+            displayName: Copy pip config into home directory
+
+          - script: |
+              python -m pip install --user invoke
+              python3 scripts/install.py --dev
+            displayName: Install project and dependencies
+
+          - script: python -m invoke lint
+            displayName: Lint with flake8
+
+          - script: python -m invoke check --include-tests
+            displayName: Lint with mypy
+
+          - script: python -m invoke test --cov --e2e
+            displayName: Test with pytest
+
+          - script: |
+              mkdir $(System.DefaultWorkingDirectory)/coverage-reports
+              cp $(System.DefaultWorkingDirectory)/coverage.xml $(System.DefaultWorkingDirectory)/coverage-reports/coverage.xml
+              cp $(System.DefaultWorkingDirectory)/junit.xml $(System.DefaultWorkingDirectory)/coverage-reports/junit.xml
+              echo $(poetry version -s) > $(System.DefaultWorkingDirectory)/coverage-reports/version.txt
+            displayName: Copy coverage report to SonarQube working directory
+
+          - publish: "$(System.DefaultWorkingDirectory)/coverage-reports"
+            displayName: Publish coverage and test artifacts for following jobs
+            artifact: coverage
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: "JUnit"
+              testResultsFiles: "$(System.DefaultWorkingDirectory)/junit.xml"
+            displayName: Publish tests results
+
+          - task: PublishCodeCoverageResults@1
+            condition: succeededOrFailed()
+            inputs:
+              codeCoverageTool: Cobertura
+              summaryFileLocation: "$(System.DefaultWorkingDirectory)/coverage.xml"
+            displayName: Publish code coverage
+
+      - job: SonarQube_Analysis
+        dependsOn: Validation
+
+        pool:
+          vmImage: "ubuntu-latest"
+
+        steps:
+          - checkout: self
+            persistCredentials: true
+            fetchDepth: 0
+
+          - download: current
+            artifact: coverage
+            displayName: Get coverage and test reports from test job
+
+          - script: |
+              echo "##vso[task.setvariable variable=JAVA_HOME]$(JAVA_HOME_11_X64)"
+              echo "##vso[task.setvariable variable=PATH]$(JAVA_HOME_11_X64)\bin;$(PATH)"
+            displayName: Set Java version to use for Sonar
+
+          - script: |
+              echo "##vso[task.setvariable variable=PROJECT_VERSION]$(cat $(Pipeline.Workspace)/coverage/version.txt)"
+              echo "" >> sonar-project.properties
+              echo "sonar.projectVersion=$(cat $(Pipeline.Workspace)/coverage/version.txt)" >> sonar-project.properties
+              echo "sonar.python.coverage.reportPaths=$(Pipeline.Workspace)/coverage/coverage.xml" >> sonar-project.properties
+              echo "sonar.python.xunit.reportPath=$(Pipeline.Workspace)/coverage/junit.xml" >> sonar-project.properties
+
+              echo "Using the following configuration:"
+              cat sonar-project.properties
+            displayName: Configure SonarQube Analysis with configuration file
+
+          - task: SonarQubePrepare@5
+            inputs:
+              SonarQube: {%raw%}${{ parameters.sonarConnection }}{%endraw%}
+              scannerMode: CLI
+              configMode: file
+
+          # Run Code Analysis task
+          - task: SonarQubeAnalyze@5
+
+          # Publish Quality Gate Result task
+          - task: SonarQubePublish@5
+            inputs:
+              pollingTimeoutSec: "300"
+
+  - stage: Docker
+    condition: or(eq(variables['Build.Reason'], 'Manual'),eq(variables['Build.Reason'], 'IndividualCI'))
+    jobs:
+      - job: Publish_To_Registry
+        steps:
+          - checkout: self
+
+          - task: DownloadSecureFile@1
+            name: pipConfig
+            displayName: Download pip config
+            inputs:
+              secureFile: "pip.conf"
+
+          - script: |
+              mkdir -p $HOME/.config/pip
+              cp $(pipConfig.secureFilePath) $HOME/.config/pip/pip.conf
+            displayName: Copy pip config into home directory
+
+          # Log to Azure Container Registry
+          - task: Docker@2
+            inputs:
+              command: login
+              containerRegistry: {%raw%}${{ parameters.registryConnection }}{%endraw%}
+            displayName: Login to ACR
+
+          - task: Docker@2
+            inputs:
+              command: run
+              arguments: "--rm --privileged multiarch/qemu-user-static --reset -p yes"
+            displayName: "Register QEMU user static"
+
+          - script: |
+              docker buildx create --use --name multiarch --driver docker-container
+              docker buildx inspect --bootstrap
+            displayName: Create a buildx context
+
+          - script: |
+              docker buildx build \
+                --secret id=pip-config,src=$(pipConfig.secureFilePath) \
+                {%raw%}-t ${{ parameters.registryUrl }}/${{ parameters.imageName }}:latest \{%endraw%}
+                -f Dockerfile \
+                --provenance=false \
+                --platform='linux/amd64' \
+                --push \
+                .
+            displayName: Build and push latest docker image

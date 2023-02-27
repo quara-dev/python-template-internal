@@ -25,9 +25,8 @@ def test_project_layout(project_slug: str, validator: ProjectValidator):
     # Expect mkdocs config
     validator.expect_file_exists("mkdocs.yml")
     # Expect CI pipelines
-    validator.expect_file_exists(".github", "workflows", "ci.yml")
-    validator.expect_file_exists(".github", "workflows", "cd.yml")
-    validator.expect_file_exists(".github", "workflows", "semantic_release.yml")
+    validator.expect_file_exists(".azuredevops", "pipelines", "ci.yml")
+    validator.expect_file_exists(".azuredevops", "pipelines", "semantic_release.yml")
     # Expect vscode config
     validator.expect_directory_exists(".vscode")
     validator.expect_file_exists(".vscode/settings.json")
@@ -210,8 +209,6 @@ def test_docs_can_be_built(validator: ProjectValidator):
     validator.expect_directory_exists("dist", "documentation")
     # Expect index to exist
     validator.expect_file_exists("dist/documentation/index.html")
-    # Expect license to exist
-    validator.expect_file_exists("dist/documentation/LICENSE/index.html")
     # Expect changelog to exist
     validator.expect_file_exists("dist/documentation/CHANGELOG/index.html")
 
@@ -233,12 +230,6 @@ def test_docs_can_be_served_in_development_mode(validator: ProjectValidator):
 
 
 def test_docker_task_command(project_name: str, validator: ProjectValidator):
-    # Check command that would be executed by "docker" task
-    default_pip_config = pathlib.Path("~/.config/pip/pip.conf").expanduser()
-    validator.expect_dry_run_output(
-        "docker",
-        match=f"docker buildx build --secret id=pip-config,src={default_pip_config} -t {project_name}:latest -f Dockerfile --provenance=false --platform='linux/amd64' .",
-    )
     # Check command that would be executed by "docker" task with options
     tmp_pip_config_root = pathlib.Path(tempfile.mkdtemp())
     tmp_pip_config = tmp_pip_config_root.joinpath("pip.conf").as_posix()

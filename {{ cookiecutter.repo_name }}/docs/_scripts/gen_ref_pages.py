@@ -1,10 +1,8 @@
 """Generate the code reference pages and navigation."""
 
-import sys
 from pathlib import Path
 
 import mkdocs_gen_files
-import urllib3
 
 nav = mkdocs_gen_files.Nav()
 
@@ -40,22 +38,3 @@ with mkdocs_gen_files.open("CHANGELOG.md", "w") as changelog_file:
         changelog_file.write(changelog.read_text())
     else:
         changelog_file.write("No version released yet")
-
-
-with mkdocs_gen_files.open("LICENSE.md", "w") as license_file:
-    http = urllib3.PoolManager()
-    LICENSE = "{{ cookiecutter.license }}"
-    response = http.request(
-        "GET",
-        f"https://raw.githubusercontent.com/spdx/license-list-data/main/text/{LICENSE}.txt",
-    )
-    data = response.data.decode("utf-8")
-    if response.status != 200:
-        print("Failed to fetch license:", file=sys.stderr)
-        print(data, file=sys.stderr)
-        sys.exit(1)
-    license_file.write(
-        data.replace("[yyyy]", "2023").replace(
-            "[name of copyright owner]", "{{ cookiecutter.author }}"
-        )
-    )

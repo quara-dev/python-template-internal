@@ -8,51 +8,35 @@ HELP = """
 ####### Next steps ##########
 
 
-1. Visit project on GitHub:
+1. Visit project on Azure Devops:
 
     {{ cookiecutter.repo_url }}
 
 
-2. Configure GitHub Pages to be deployed using Github Action:
-
-    https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+2. Add a secret file named `pip.conf` in Azure Devops Library:
 
 
-3. Create a deploy key named COMMIT_KEY and an associated action secret named COMMIT_KEY:
+3. Import project in sonarqube:
 
-    # $ alias clip="clip.exe"  # WSL users only
-
-    $ ssh-keygen -t ed25519 -f id_ed25519 -N "" -q -C ""
-    $ cat id_ed25519.pub | clip  # This is the value of the deployed key
-    $ cat id_ed25519 | clip # This is the value of the action secret
+    https://sonar.quara.cloud
 
 
-4. Import project in sonarcloud:
-
-    https://sonarcloud.io/projects/create
-
-
-5. Obtain project token from SonarCloud and create an action secret named SONAR_TOKEN:
-
-    https://docs.sonarcloud.io/advanced-setup/ci-based-analysis/github-actions-for-sonarcloud/
-
-
-6. Add git origin remote:
+4. Add git origin remote:
     $ git remote add origin git@github.com:{{ cookiecutter.repo_org }}/{{ cookiecutter.repo_name }}.git
 
 
-7. Push next branch:
+5. Push next branch:
 
     $ git push -u origin next
 
 
-8. Push main branch:
+6. Push main branch:
 
     $ git checkout main
     $ git push -u origin main
 
 
-9. Start developping on a new branch:
+7. Start developping on a new branch:
 
     $ git checkout -b feat/my_feature_branch
 """

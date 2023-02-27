@@ -5,4 +5,3 @@
 * [Developer Guide](developer/index.md)
     * [API Reference](reference/)
 * [Changelog](CHANGELOG.md)
-* [License](LICENSE.md)
